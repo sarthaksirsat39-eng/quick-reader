@@ -1,0 +1,514 @@
+// QUICK READER - single-file Flutter scaffold (main.dart)
+// This file is intended as a starting, professional scaffold for the app you requested.
+// It includes: Login/Signup, Home with categories/search, Book detail with Read/Listen,
+// subscription check (daily free, monthly/yearly plans), basic payments placeholder,
+// placeholders for Google Gemini / ElevenLabs TTS API integration, and comments where to add keys.
+
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+// Add these dependencies to pubspec.yaml:
+// http: ^0.13.6
+// shared_preferences: ^2.1.1
+// audioplayers: ^2.0.5
+// url_launcher: ^6.1.7
+
+void main() {
+  runApp(const QuickReaderApp());
+}
+
+class QuickReaderApp extends StatelessWidget {
+  const QuickReaderApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Quick Reader',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(primarySwatch: Colors.indigo),
+      home: const SplashOrAuth(),
+    );
+  }
+}
+
+class SplashOrAuth extends StatefulWidget {
+  const SplashOrAuth({super.key});
+  @override
+  State<SplashOrAuth> createState() => _SplashOrAuthState();
+}
+
+class _SplashOrAuthState extends State<SplashOrAuth> {
+  bool _loggedIn = false;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLogin();
+  }
+
+  Future<void> _checkLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    await Future.delayed(const Duration(milliseconds: 500));
+    setState(() {
+      _loggedIn = token != null;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_loggedIn) return const HomePage();
+    return const AuthLandingPage();
+  }
+}
+
+// ---------- AUTH PAGES ----------
+class AuthLandingPage extends StatelessWidget {
+  const AuthLandingPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('Quick Reader', style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              const Text('Read. Listen. Learn.', style: TextStyle(fontSize: 16)),
+              const SizedBox(height: 40),
+              ElevatedButton(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginPage())),
+                child: const Text('Login'),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SignupPage())),
+                child: const Text('Sign up'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final _email = TextEditingController();
+  final _pass = TextEditingController();
+  bool _busy = false;
+
+  Future<void> _login() async {
+    setState(() => _busy = true);
+    // TODO: Replace with real auth API
+    await Future.delayed(const Duration(seconds: 1));
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('token', 'demo-token');
+    setState(() => _busy = false);
+    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomePage()), (r) => false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Login')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(children: [
+          TextField(controller: _email, decoration: const InputDecoration(labelText: 'Email')),
+          const SizedBox(height: 8),
+          TextField(controller: _pass, decoration: const InputDecoration(labelText: 'Password'), obscureText: true),
+          const SizedBox(height: 20),
+          ElevatedButton(onPressed: _busy ? null : _login, child: _busy ? const CircularProgressIndicator(color: Colors.white) : const Text('Login')),
+        ]),
+      ),
+    );
+  }
+}
+
+class SignupPage extends StatefulWidget {
+  const SignupPage({super.key});
+  @override
+  State<SignupPage> createState() => _SignupPageState();
+}
+
+class _SignupPageState extends State<SignupPage> {
+  final _email = TextEditingController();
+  final _pass = TextEditingController();
+  bool _busy = false;
+
+  Future<void> _signup() async {
+    setState(() => _busy = true);
+    // TODO: Replace with real signup API
+    await Future.delayed(const Duration(seconds: 1));
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('token', 'demo-token');
+    setState(() => _busy = false);
+    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomePage()), (r) => false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Sign up')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(children: [
+          TextField(controller: _email, decoration: const InputDecoration(labelText: 'Email')),
+          const SizedBox(height: 8),
+          TextField(controller: _pass, decoration: const InputDecoration(labelText: 'Password'), obscureText: true),
+          const SizedBox(height: 20),
+          ElevatedButton(onPressed: _busy ? null : _signup, child: _busy ? const CircularProgressIndicator(color: Colors.white) : const Text('Create account')),
+        ]),
+      ),
+    );
+  }
+}
+
+// ---------- BOOK DATA MODELS & MOCK DATA ----------
+class Book {
+  final String id;
+  final String title;
+  final String author;
+  final String category; // e.g., 'Hindu', 'Science', 'Biography', 'Motivation'
+  final String content; // full text (in real app store remote)
+  Book({required this.id, required this.title, required this.author, required this.category, required this.content});
+}
+
+List<Book> mockBooks = List.generate(12, (i) => Book(
+    id: 'b\$i',
+    title: ['Bhagavad Gita', 'Science of Everything', 'Life of a Leader', 'Daily Motivation'][i % 4] + ' #\$i',
+    author: 'Author \$i',
+    category: ['Hindu','Science','Biography','Motivation'][i % 4],
+    content: 'This is the full content of the book number \$i. Replace with real text from your backend.'
+));
+
+// ---------- HOME / SEARCH / CATEGORIES ----------
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  String query = '';
+  String selectedCategory = 'All';
+  List<Book> visible = mockBooks;
+  int dailyReadCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDailyCount();
+  }
+
+  Future<void> _loadDailyCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    final dayKey = DateTime.now().toIso8601String().split('T').first;
+    final key = 'dailyCount_\$dayKey';
+    setState(() {
+      dailyReadCount = prefs.getInt(key) ?? 0;
+    });
+  }
+
+  void _search() {
+    setState(() {
+      visible = mockBooks.where((b) => (selectedCategory == 'All' || b.category == selectedCategory) && (b.title.toLowerCase().contains(query.toLowerCase()) || b.author.toLowerCase().contains(query.toLowerCase()))).toList();
+    });
+  }
+
+  void _openBook(Book b) async {
+    final prefs = await SharedPreferences.getInstance();
+    final dayKey = DateTime.now().toIso8601String().split('T').first;
+    final key = 'dailyCount_\$dayKey';
+    final hasActivePlan = prefs.getBool('sub_active') ?? false;
+
+    if (dailyReadCount >= 1 && !hasActivePlan) {
+      // user already read today and no plan
+      _showNeedPlan();
+      return;
+    }
+
+    if (dailyReadCount < 1 && !hasActivePlan) {
+      // increment daily
+      await prefs.setInt(key, dailyReadCount + 1);
+      setState(() => dailyReadCount += 1);
+    }
+
+    Navigator.push(context, MaterialPageRoute(builder: (_) => BookDetailPage(book: b)));
+  }
+
+  void _showNeedPlan() {
+    showDialog(context: context, builder: (c) => AlertDialog(
+      title: const Text('Limit reached'),
+      content: const Text('आपण आजचा विनामूल्य बुक वाचला आहे. आणखी वाचण्यासाठी कृपया सदस्यता घ्या.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+        ElevatedButton(onPressed: () { Navigator.pop(c); Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscriptionPage())); }, child: const Text('Get Plan'))
+      ],
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Quick Reader'),
+        actions: [
+          IconButton(icon: const Icon(Icons.account_circle), onPressed: () async { final prefs = await SharedPreferences.getInstance(); await prefs.remove('token'); Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const SplashOrAuth()), (r) => false); }),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(children: [
+          TextField(
+            decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search books, authors...'),
+            onChanged: (v) { query = v; _search(); },
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: ['All','Hindu','Science','Biography','Motivation'].map((c) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                child: ChoiceChip(
+                  label: Text(c),
+                  selected: selectedCategory == c,
+                  onSelected: (_) { setState(() { selectedCategory = c; _search(); }); },
+                ),
+              )).toList(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: ListView.builder(
+              itemCount: visible.length,
+              itemBuilder: (context, i) {
+                final b = visible[i];
+                return ListTile(
+                  title: Text(b.title),
+                  subtitle: Text('${b.author} • ${b.category}'),
+                  trailing: ElevatedButton(onPressed: () => _openBook(b), child: const Text('Open')),
+                );
+              },
+            ),
+          )
+        ]),
+      ),
+      bottomNavigationBar: BottomAppBar(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Text('Daily free used: \$dailyReadCount / 1'),
+            ElevatedButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscriptionPage())), child: const Text('Plans'))
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------- BOOK DETAIL + TTS (Listen) ----------
+class BookDetailPage extends StatefulWidget {
+  final Book book;
+  const BookDetailPage({required this.book, super.key});
+
+  @override
+  State<BookDetailPage> createState() => _BookDetailPageState();
+}
+
+class _BookDetailPageState extends State<BookDetailPage> {
+  final AudioPlayer _player = AudioPlayer();
+  bool _playing = false;
+
+  // Replace these placeholders with your API keys / endpoints
+  final String elevenLabsApiKey = 'YOUR_ELEVENLABS_API_KEY';
+  final String geminiApiKey = 'YOUR_GOOGLE_GEMINI_API_KEY';
+
+  Future<void> _listenWithElevenLabs() async {
+    // Example flow: send text to TTS API, receive audio URL or bytes, play
+    // NOTE: ElevenLabs expects a particular request. Here we show a placeholder HTTP flow.
+    final text = widget.book.content;
+    try {
+      // TODO: Implement real ElevenLabs HTTP request here. For now we simulate using a remote TTS URL if you have one.
+      // final resp = await http.post(Uri.parse('https://api.elevenlabs.io/v1/text-to-speech'), headers: { 'Authorization': 'Bearer \$elevenLabsApiKey' }, body: jsonEncode({ 'text': text }));
+      // final audioUrl = jsonDecode(resp.body)['audio_url'];
+      // await _player.play(UrlSource(audioUrl));
+
+      // Simulate: play a short beep (or any online test mp3) - replace with real audio
+      const testAudio = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+      await _player.play(UrlSource(testAudio));
+      setState(() { _playing = true; });
+      _player.onPlayerComplete.listen((event) { setState(() { _playing = false; }); });
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Listen failed: \$e')));
+    }
+  }
+
+  Future<void> _listenWithGemini() async {
+    // Placeholder for Google Gemini TTS (text -> audio) flow. Replace with the real API call.
+    await _listenWithElevenLabs();
+  }
+
+  void _openReader() {
+    // Simple reader: show content page
+    Navigator.push(context, MaterialPageRoute(builder: (_) => ReaderPage(book: widget.book)));
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = widget.book;
+    return Scaffold(
+      appBar: AppBar(title: Text(b.title)),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(children: [
+          Text(b.title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text('By ${b.author} • ${b.category}'),
+          const SizedBox(height: 16),
+          Expanded(child: SingleChildScrollView(child: Text(b.content))),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: ElevatedButton.icon(onPressed: _openReader, icon: const Icon(Icons.menu_book), label: const Text('Read'))),
+            const SizedBox(width: 8),
+            Expanded(child: ElevatedButton.icon(onPressed: _playing ? null : _listenWithElevenLabs, icon: const Icon(Icons.headset), label: Text(_playing ? 'Playing...' : 'Listen'))),
+          ])
+        ]),
+      ),
+    );
+  }
+}
+
+class ReaderPage extends StatelessWidget {
+  final Book book;
+  const ReaderPage({required this.book, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(appBar: AppBar(title: const Text('Reader')), body: Padding(padding: const EdgeInsets.all(16.0), child: SingleChildScrollView(child: Text(book.content))));
+  }
+}
+
+// ---------- SUBSCRIPTION PAGE ----------
+class SubscriptionPage extends StatefulWidget {
+  const SubscriptionPage({super.key});
+  @override
+  State<SubscriptionPage> createState() => _SubscriptionPageState();
+}
+
+class _SubscriptionPageState extends State<SubscriptionPage> {
+  bool _processing = false;
+
+  // Price details
+  final double monthlyINR = 450.0; // monthly price in INR for 5 books
+  final double yearlyINR = 2000.0; // example yearly price for 50+ books
+
+  Future<void> _buy(String plan) async {
+    // In a production app, integrate Razorpay (India) and Stripe or other providers for international.
+    // Here we'll open a payment checkout URL placeholder and then mark subscription active.
+    setState(() => _processing = true);
+    // example: open a hosted checkout page you create on backend which handles multiple currencies
+    const checkoutUrl = 'https://your-backend.example.com/create-checkout?plan=';
+    final url = Uri.parse('$checkoutUrl\$plan');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cannot open payment URL')));
+    }
+    // After successful payment your backend should call your app via deep link or you should poll backend.
+    // For demo: mark active immediately (not secure)
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('sub_active', true);
+    await prefs.setString('sub_plan', plan);
+    setState(() => _processing = false);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Subscription marked active (demo)')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Plans')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Choose a plan', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+
+          Card(child: ListTile(title: const Text('Daily (Free)'), subtitle: const Text('1 free book per day'), trailing: ElevatedButton(onPressed: null, child: const Text('Active')))),
+
+          const SizedBox(height: 8),
+          Card(child: ListTile(
+            title: const Text('Monthly (India)'),
+            subtitle: Text('₹\$monthlyINR — up to 5 books per month'),
+            trailing: ElevatedButton(onPressed: _processing ? null : () => _buy('monthly_inr'), child: _processing ? const CircularProgressIndicator(color: Colors.white) : const Text('Buy')),
+          )),
+
+          const SizedBox(height: 8),
+          Card(child: ListTile(
+            title: const Text('Yearly (India)'),
+            subtitle: Text('₹\$yearlyINR — 50+ books per year'),
+            trailing: ElevatedButton(onPressed: _processing ? null : () => _buy('yearly_inr'), child: _processing ? const CircularProgressIndicator(color: Colors.white) : const Text('Buy')),
+          )),
+
+          const SizedBox(height: 20),
+          const Text('Note:', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          const Text('• For international buyers configure your backend to show prices in the user currency or use Stripe Checkout which auto-converts currencies.'),
+          const SizedBox(height: 6),
+          const Text('• For real payments integrate Razorpay SDK for India and Stripe (or PayPal) for global cards. After successful webhook from backend, mark subscription active in the app.'),
+        ]),
+      ),
+    );
+  }
+}
+
+/*
+  README / Next steps (short):
+
+  1) Create a new Flutter project and replace lib/main.dart with this file.
+  2) Add dependencies in pubspec.yaml: http, shared_preferences, audioplayers, url_launcher
+  3) Implement real backend APIs for auth, book content, subscription verification and a secure hosted checkout.
+  4) TTS: For ElevenLabs - call their TTS endpoint with your API key, get audio bytes or URL, then play via AudioPlayer.
+     For Google Gemini Audio - use Google Cloud / Gemini TTS endpoints (follow Google's docs). Keep keys on backend.
+     NEVER embed secret API keys in the client; always call your backend which signs requests.
+  5) Payments: Use Razorpay (India) or Stripe (global). The recommended flow: client requests a checkout session from backend -> backend creates order/session with provider -> provider redirects to payment page -> on success backend informs client via webhook / return URL.
+  6) Replace mockBooks with remote API that serves categories and full text, and obey copyright/licensing for the books.
+
+  Deployment & GitHub:
+  • Create repository, push project
+  • Add a secure backend folder (Node/Express, Firebase, or whichever) to handle API keys and payment webhooks.
+
+  Security & Legal notes:
+  • Ensure you have rights to distribute the books. Hindu scriptures (like Gita) may be public domain but translations might be copyrighted.
+  • Do not store API secret keys in the app. Use server-side.
+
+  If you want, I can also:
+  • Generate a simple backend (Node/Express) for auth, book list, checkout session + webhook stubs.
+  • Provide example ElevenLabs & Stripe integration code.
+
+  */
